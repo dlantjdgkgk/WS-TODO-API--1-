@@ -1,11 +1,12 @@
 class CreateTodoRequest {
-    contents = ""
+    content = ""
     constructor(express) {
-        const { contents } = express.body
-        this.contents = contents
+        const { content } = express.body
+        this.contents = content
+        this.validate()
     }
     validate() {
-        if (this.contents.length > 200) {
+        if (this.contents.length > 20) {
             throw new Error("contents 길이를 넘었습니다")
         }
     }

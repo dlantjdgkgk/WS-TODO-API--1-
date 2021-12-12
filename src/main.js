@@ -5,27 +5,29 @@ const PORT = 3714
 
 // get the client
 const mysql = require("mysql2/promise")
-const CreateTodoRequest = require("../network/CreateTodoRequest")
-const CreateTodoResponse = require("../network/CreateTodoResponse")
-const FindTodoResponse = require("../network/FindTodoResponse")
-
-const connectionInfo = {}
+const CreateTodoRequest = require("./network/CreateTodoRequest")
+const CreateTodoResponse = require("./network/CreateTodoResponse")
+const FindTodoResponse = require("./network/FindTodoResponse")
+const AsyncWrapper = require("./common/AsyncWrapper")
+const config = require("./common/config")
+const ErrorHandler = require("./common/ErrorHandler")
+const ResponseHandler = require("./common/ResponseHandler")
+const UpdateTodoRequest = require("./network/UpdateTodoRequest")
+const UpdateTodoResponse = require("./network/UpdateTodoResponse")
+const DeleteTodoRequest = require("./network/DeleteTodoRequest")
+const DeleteTodoResponse = require("./network/DeleteTodoResponse")
 
 initExpress(app)
 
 // READ response 객체  - FindTodoResponse
-app.get("/todos", async (req, res) => {
-    let response = null
-    try {
-        const connection = await mysql.createConnection(connectionInfo)
-        const body = await connection.execute("Select * FROM todo ")
-        response = new FindTodoResponse(200, body, res)
-    } catch (error) {
-        response = new FindTodoResponse(400, "오류가 납니다", res)
-    } finally {
-        response.send()
-    }
-})
+app.get("/todos", AsyncWrapper.wrap(findTodo))
+async function findTodo(req, res, next) {
+    const connection = await mysql.createConnection(config.mysql)
+    const queryResult = await connection.execute("Select * FROM todo ")
+    const response = new FindTodoResponse(queryResult)
+    res.output = response
+    next()
+}
 
 // CREATE  createTodoRequest -- createTodoResponse
 app.post("/todos", async (req, res) => {
@@ -34,7 +36,7 @@ app.post("/todos", async (req, res) => {
     try {
         request.validate()
         const { contents } = request
-        const connection = await mysql.createConnection(connectionInfo)
+        const connection = await mysql.createConnection(config.mysql)
         await connection.execute("INSERT INTO todo (content) VALUES (?)", [contents])
         response = new CreateTodoResponse(200, { result: true }, res)
     } catch (error) {
@@ -44,19 +46,41 @@ app.post("/todos", async (req, res) => {
     }
 })
 
-// UPDATE
-app.put("/todos", (request, response) => {
-    const responseBody = "PUT /todos"
-    response.status(200)
-    response.json(responseBody)
-})
+// CREATE  createTodoRequest -- createTodoResponse
+// app.post("/todos", AsyncWrapper.wrap(createTodo))
+// async function createTodo(req, res, next) {
+//     const request = new CreateTodoRequest(req)
+//     const { content } = request
+//     //service Start
+//     const connection = await mysql.createConnection(config.mysql)
+//     await connection.execute("INSERT INTO todo (content) VALUES (?)", [content])
+// }
 
-// DELETE
-app.delete("/todos", (request, response) => {
-    const responseBody = "DELETE /todos"
-    response.status(200)
-    response.json(responseBody)
-})
+// UPDATE request, response 둘다
+app.put("/todos/:id", AsyncWrapper.wrap(updateTodo))
+async function updateTodo(req, res, next) {
+    const request = new UpdateTodoRequest(req)
+    const { id, content, is_success } = request
+    //Service Start
+    const connection = await mysql.createConnection(config.mysql)
+    await connection.execute("UPDATE todo SET content = ?,is_success=? Where id =?", [content, is_success, id])
+    res.output = new UpdateTodoResponse(true)
+    next()
+}
+
+// DELETE request, response 둘다
+app.delete("/todos/:id", AsyncWrapper.wrap(deleteTodo))
+async function deleteTodo(req, res, next) {
+    const request = new DeleteTodoRequest(req)
+    const { id } = request
+    const connection = await mysql.createConnection(config.mysql)
+    await connection.execute("DELETE FROM todo WHERE id=?", [id])
+    res.output = new DeleteTodoResponse(true)
+    next()
+}
+
+app.use(ResponseHandler.handle) // 미들웨어 등록
+app.use(ErrorHandler.handle) // 미들웨어 등록
 
 app.listen(PORT, () => console.log(`Example app listening at http://localhost:3714`))
 
